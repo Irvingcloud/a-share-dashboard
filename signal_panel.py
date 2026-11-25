@@ -240,6 +240,12 @@ def evaluate(live: dict, ref: pd.DataFrame) -> dict:
         tone, why = "中性", "没有稳定条件命中，按震荡处理，不硬套方向"
 
     res.update({"tone": tone, "why": why, "bonus": bonus, "live": live})
+
+    # 位置提示：多数指标落在近 250 日最低 20% 分位（只描述位置，不当方向信号）
+    low_cols = ["ann_q", "vol_ratio", "mom20", "dev20", "hl20"]
+    low_n = sum(1 for c in low_cols if (res["ranks"].get(c) or 100) < 20)
+    res["weak_note"] = (f"{low_n} 个指标处于近 250 日最低 20% 分位，当前属弱势位置；"
+                        "历史没有验证过的稳定偏空组合，所以不给方向，只提示别追多") if low_n >= 3 else ""
     return res
 
 
