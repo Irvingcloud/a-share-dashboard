@@ -424,10 +424,42 @@ def load_discount_history(code: str, window: int) -> pd.DataFrame:
     return m.tail(window).reset_index(drop=True)
 
 
+def _sina_hf_quote(sym: str) -> tuple[float, float, str] | None:
+    """新浪外盘期货即时报价（hf_NQ / hf_ES）：返回 (最新价, 昨收, 日期)"""
+    import requests
+    r = requests.get(f"https://hq.sinajs.cn/list=hf_{sym}",
+                     headers={"Referer": "https://finance.sina.com.cn",
+                              "User-Agent": "Mozilla/5.0"}, timeout=10)
+    parts = r.text.split('"')
+    if len(parts) < 2 or not parts[1]:
+        return None
+    f = parts[1].split(",")
+    if len(f) < 13 or not f[0]:
+        return None
+    try:
+        price, prev = float(f[0]), float(f[7])
+    except ValueError:
+        return None
+    if price <= 0 or prev <= 0:
+        return None
+    return price, prev, f[12]
+
+
 def load_overseas() -> dict:
     """外盘：纳指期货 NQ、标普期货 ES、纳斯达克指数 .IXIC"""
     out = {}
     for sym, label in [("NQ", "纳指期货"), ("ES", "标普期货")]:
+        q = None
+        try:
+            q = _sina_hf_quote(sym)
+        except Exception:
+            q = None
+        if q:
+            price, prev, d = q
+            out[sym] = {"label": label, "price": price,
+                        "chg": (price / prev - 1) * 100,
+                        "date": pd.to_datetime(d).date()}
+            continue
         try:
             df = ak.futures_foreign_hist_sina(symbol=sym).copy()
             df["date"] = pd.to_datetime(df["date"])
