@@ -510,6 +510,7 @@ try:
         f'<div class="concl" style="border-left-color:#{tone_hex}">'
         f'<strong style="color:#{tone_hex};font-size:1.05rem">体检结论：{ev["tone"]}</strong><br><br>'
         f'{ev["why"]}。{"（另有加分条件命中：广度强 + 放量 + 动量为正。）" if ev["bonus"] else ""}'
+        f'{("　" + ev["weak_note"] + "。" ) if ev.get("weak_note") else ""}'
         f'</div>',
         unsafe_allow_html=True,
     )
