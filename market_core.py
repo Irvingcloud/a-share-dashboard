@@ -282,8 +282,76 @@ def load_spot_index() -> pd.DataFrame:
     return ak.index_zh_spot_sina()
 
 
+def _sina_fut_quotes(codes: list[str]) -> dict[str, list[str]]:
+    """直接读新浪期货行情（hq.sinajs.cn），返回 {合约代码: 字段列表}"""
+    import requests
+    url = "https://hq.sinajs.cn/list=" + ",".join(f"nf_{c}" for c in codes)
+    r = requests.get(url, headers={"Referer": "https://finance.sina.com.cn",
+                                   "User-Agent": "Mozilla/5.0"}, timeout=12)
+    out = {}
+    for line in r.text.split(";"):
+        if "hq_str_nf_" not in line:
+            continue
+        head, _, rest = line.partition("=")
+        code = head.split("hq_str_nf_")[-1].strip()
+        body = rest.strip().strip('"')
+        if body:
+            out[code] = body.split(",")
+    return out
+
+
+def _contract_codes(prod: str, months: int = 12) -> list[str]:
+    """未来 N 个月的可交割合约代码（中金所每种只有当月/下月/当季/下季四个会返回数据）"""
+    out, y, m = [], today_cn().year, today_cn().month
+    for _ in range(months):
+        out.append(f"{prod}{str(y)[2:]}{m:02d}")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
 def load_futures() -> pd.DataFrame:
+    """期指各合约实时行情。
+
+    先用新浪 hq.sinajs.cn 逐合约取（akshare 的 futures_zh_realtime_sina 有时只返回
+    已到期的老合约，贴水率会算成几十个点，不能直接用）。
+    """
     rows = []
+    today = today_cn()
+
+    for prod in SINA_FUT_NAME:
+        codes = _contract_codes(prod)
+        try:
+            quotes = _sina_fut_quotes(codes)
+        except Exception:
+            quotes = {}
+
+        for code in codes:
+            f = quotes.get(code)
+            if not f or len(f) < 38:
+                continue
+            try:
+                trade = float(f[3])
+                position = float(f[6])
+            except ValueError:
+                continue
+            if trade <= 0:
+                continue
+            if parse_expiry(code) < today:
+                continue
+            rows.append({
+                "品种": prod, "symbol": code,
+                "trade": trade, "position": position,
+                "volume": float(f[4] or 0),
+                "tradedate": f[36], "ticktime": f[37],
+            })
+
+    if rows:
+        return pd.DataFrame(rows)
+
+    # 兜底：新浪直连失败时退回 akshare
+    fallback = []
     for code, name in SINA_FUT_NAME.items():
         try:
             df = ak.futures_zh_realtime_sina(symbol=name)
@@ -293,9 +361,10 @@ def load_futures() -> pd.DataFrame:
             continue
         df = df.copy()
         df = df[df["symbol"].astype(str).str.len() == 6]
+        df = df[[parse_expiry(str(s)) >= today for s in df["symbol"]]]
         df["品种"] = code
-        rows.append(df)
-    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+        fallback.append(df)
+    return pd.concat(fallback, ignore_index=True) if fallback else pd.DataFrame()
 
 
 def load_breadth() -> dict:
