@@ -783,6 +783,17 @@ def save_snapshot(row: dict) -> pd.DataFrame:
     row = {k: row.get(k) for k in SNAPSHOT_COLUMNS if k in row} | \
           {k: v for k, v in row.items() if k not in SNAPSHOT_COLUMNS}
 
+    # 只接受"今天"的快照：期指取数异常时日期会漂成老合约的到期日（如 2024-09-20），
+    # 那种脏数据一律不落库
+    d = str(row.get("日期") or "")[:10]
+    try:
+        dt = datetime.strptime(d, "%Y-%m-%d").date()
+    except ValueError:
+        dt = None
+    if dt is not None and abs((today_cn() - dt).days) > 7:
+        print(f"[跳过写入] 快照日期 {d} 不是今天，疑似合约数据异常")
+        return load_history()
+
     gh = _github_backend()
     if gh is not None:
         try:
