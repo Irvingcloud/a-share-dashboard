@@ -460,9 +460,78 @@ st.markdown(
 )
 
 # ============================================================
-# 9. 六、历史记录
+# 9. 六、信号体检（三年回测条件）
 # ============================================================
-st.markdown("### 六、每日历史记录")
+st.markdown("### 六、信号体检（近三年回测条件）")
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_index_ohlc(symbol: str):
+    import signal_panel as sp
+    return sp.fetch_ohlc(symbol)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_hl_stat():
+    import signal_panel as sp
+    return sp.fetch_hl()
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_if_hist_300():
+    return mc.load_discount_history("IF", 300)
+
+
+try:
+    import signal_panel as sp
+
+    vol = sp.merge_volume(
+        sp.drop_unclosed_today(load_index_ohlc("sh000001")),
+        sp.drop_unclosed_today(load_index_ohlc("sz399001")),
+    )
+    live = sp.build_live(detail, load_if_hist_300(), vol, load_hl_stat())
+    ev = sp.evaluate(live, sp.load_ref())
+
+    tone_hex = {"强偏多": mc.BULL_STRONG, "偏多": mc.BULL, "中性": mc.NEUTRAL,
+                "信号冲突": "B45309", "偏空": mc.BEAR, "强偏空": mc.BEAR_STRONG}[ev["tone"]]
+
+    cols7 = st.columns(4)
+    for c, col_name, label in [
+        (cols7[0], "ann_q", "当季年化贴水"),
+        (cols7[1], "vol_ratio", "量能比（成交量/20日均量）"),
+        (cols7[2], "mom20", "沪深300 20 日动量"),
+        (cols7[3], "hl20", "广度（20日新高新低净值）"),
+    ]:
+        rk = ev["ranks"].get(col_name)
+        mcard(c, label, sp.fmt(col_name, ev["live"].get(col_name)),
+              sub=f"近 250 日 {rk:.0f}% 分位" if rk is not None else "分位不可用")
+
+    st.markdown(
+        f'<div class="concl" style="border-left-color:#{tone_hex}">'
+        f'<strong style="color:#{tone_hex};font-size:1.05rem">体检结论：{ev["tone"]}</strong><br><br>'
+        f'{ev["why"]}。{"（另有加分条件命中：广度强 + 放量 + 动量为正。）" if ev["bonus"] else ""}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.dataframe(sp.stats_table(ev), width="stretch", hide_index=True,
+                 column_config={"说明": st.column_config.TextColumn(width="large")})
+
+    st.caption(
+        f"口径：阈值 = 近三年（{len(sp.load_ref())} 个交易日）全样本 30%/70% 分位；"
+        "贴水一律用当季合约年化（dte 50–150），不用近月——近月年化在交割周会被机械放大，"
+        "历史统计因此会虚高。各指标取数日："
+        f"价格 {live.get('as_of_price')}、量能 {live.get('vol_date')}、"
+        f"广度 {live.get('hl_date')}、期指 {live.get('fut_date')}。"
+        "样本内挖掘 + 概率偏好，不是买卖点。"
+    )
+except Exception as e:
+    st.warning(f"信号体检暂不可用：{type(e).__name__} {e}")
+
+# ============================================================
+# 10. 七、历史记录
+# ============================================================
+st.markdown("### 七、每日历史记录")
 
 snap = mc.build_snapshot(detail, breadth, etf_sum, overseas, sh_chg)
 
