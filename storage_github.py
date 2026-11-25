@@ -76,7 +76,9 @@ def read_dataframe(columns: list[str] | None = None) -> pd.DataFrame:
     text, _ = _fetch_file()
     if not text or not text.strip():
         return pd.DataFrame(columns=columns or [])
-    df = pd.read_csv(io.StringIO(text), encoding="utf-8-sig", dtype=str)
+    df = pd.read_csv(io.StringIO(text), encoding="utf-8-sig")
+    if "日期" in df.columns:
+        df["日期"] = df["日期"].astype(str).str.replace(r"\.0$", "", regex=True)
     if columns:
         for c in columns:
             if c not in df.columns:
