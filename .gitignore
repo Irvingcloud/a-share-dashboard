@@ -1,0 +1,16 @@
+# 云端专用：不想让这些进仓库
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+
+# 密钥（只在 Streamlit Cloud 后台填）
+.streamlit/secrets.toml
+
+# 本地历史与日志（云端历史写在仓库根的 history.csv，不提交这个目录）
+历史记录/
+日志/
+
+# 本地启动脚本（Windows 专用，云端用不到）
+启动分析页面.bat
